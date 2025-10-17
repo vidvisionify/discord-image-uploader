@@ -1,14 +1,20 @@
-FROM node:20-slim
+# Use Node 20 for full ES module and modern JS support
+FROM node:20-bullseye
 
-# Create app directory
+# Set working directory
 WORKDIR /app
 
-# Install dependencies
+# Copy package.json and package-lock.json first for caching
 COPY package*.json ./
+
+# Install dependencies
 RUN npm install
 
-# Copy project files
+# Copy the rest of the code
 COPY . .
 
-# Run the bot
-CMD ["node", "src/index.js"]
+# Expose optional ports (not strictly needed here)
+# EXPOSE 3000
+
+# Default command
+CMD ["node", "index.js"]
