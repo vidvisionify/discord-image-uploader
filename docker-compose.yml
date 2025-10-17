@@ -1,0 +1,14 @@
+version: "3.9"
+services:
+  discord-image-uploader:
+    build: .
+    container_name: discord-image-uploader
+    restart: always
+    environment:
+      - DISCORD_TOKEN=${DISCORD_TOKEN}
+      - DISCORD_CHANNEL_ID=${DISCORD_CHANNEL_ID}
+      - GITHUB_TOKEN=${GITHUB_TOKEN}
+      - GITHUB_REPO=${GITHUB_REPO}
+      - GITHUB_BRANCH=${GITHUB_BRANCH}
+      - IMAGE_FILENAME_BASE=${IMAGE_FILENAME_BASE}
+      - GITHUB_PATH=${GITHUB_PATH}
