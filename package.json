@@ -1,16 +1,22 @@
 {
   "name": "discord-image-uploader",
   "version": "1.0.0",
+  "description": "Discord bot that uploads images to GitHub and replaces poster.png, made by AI",
   "type": "module",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
   "dependencies": {
-    "discord.js": "^15.0.0",
-    "dotenv": "^16.0.0",
+    "discord.js": "^15.8.0",
+    "dotenv": "^16.3.1",
     "node-fetch": "^3.3.2",
-    "sharp": "^0.32.0",
-    "@octokit/rest": "^20.0.0"
-  }
+    "sharp": "^0.32.4",
+    "@octokit/rest": "^20.1.2"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "author": "AI Generated",
+  "license": "MIT"
 }
