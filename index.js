@@ -21,22 +21,25 @@ const channelId = process.env.DISCORD_CHANNEL_ID;
 const mainFileName = process.env.MAIN_FILENAME || "poster.png";
 const branch = process.env.GITHUB_BRANCH || "main";
 
+// Fetch the SHA of the file from the latest branch tree
+async function getLatestSha(path) {
+  const branchInfo = await octokit.rest.repos.getBranch({ owner, repo, branch });
+  const commitSha = branchInfo.data.commit.sha;
+
+  const tree = await octokit.rest.git.getTree({
+    owner,
+    repo,
+    tree_sha: commitSha,
+    recursive: true,
+  });
+
+  const file = tree.data.tree.find(f => f.path === path);
+  return file?.sha; // undefined if file doesn't exist yet
+}
+
 // Helper to safely update a file
 async function safeUpdateFile(path, content, commitMsg) {
-  let sha;
-  try {
-    const { data } = await octokit.rest.repos.getContent({
-      owner,
-      repo,
-      path,
-      ref: branch,
-    });
-    sha = data.sha;
-  } catch (err) {
-    if (err.status !== 404) throw err;
-    sha = undefined; // file doesn’t exist yet
-  }
-
+  const sha = await getLatestSha(path);
   await octokit.rest.repos.createOrUpdateFileContents({
     owner,
     repo,
@@ -76,7 +79,7 @@ client.on("messageCreate", async (message) => {
     const base64Content = resized.toString("base64");
     const commitMsg = message.content || `Upload ${mainFileName}`;
 
-    // ---- Replace main poster.png ----
+    // ---- Replace poster.png ----
     await safeUpdateFile(`uploads/${mainFileName}`, base64Content, commitMsg);
     console.log(`✅ Replaced ${mainFileName}`);
 
@@ -89,7 +92,7 @@ client.on("messageCreate", async (message) => {
     await safeUpdateFile(timestampedName, base64Content, commitMsg);
     console.log(`✅ Uploaded timestamped file: ${timestampedName}`);
 
-    // ---- React to the original message ----
+    // ---- React to original message ----
     await message.react("🔗");
   } catch (err) {
     console.error("❌ Upload failed:", err);
