@@ -20,6 +20,34 @@ const [owner, repo] = process.env.GITHUB_REPO.split("/");
 const channelId = process.env.DISCORD_CHANNEL_ID;
 const mainFileName = process.env.MAIN_FILENAME || "poster.png";
 
+// Helper to safely update a file (handles SHA and 404)
+async function safeUpdateFile(path, content, commitMsg) {
+  try {
+    const { data } = await octokit.rest.repos.getContent({ owner, repo, path });
+    const sha = data.sha;
+    await octokit.rest.repos.createOrUpdateFileContents({
+      owner,
+      repo,
+      path,
+      message: commitMsg,
+      content,
+      sha,
+    });
+  } catch (err) {
+    if (err.status === 404) {
+      await octokit.rest.repos.createOrUpdateFileContents({
+        owner,
+        repo,
+        path,
+        message: commitMsg,
+        content,
+      });
+    } else {
+      console.error("Upload error:", err);
+    }
+  }
+}
+
 client.once("ready", () => {
   console.log(`✅ Logged in as ${client.user.tag}`);
 });
@@ -46,50 +74,19 @@ client.on("messageCreate", async (message) => {
       .toBuffer();
 
     const base64Content = resized.toString("base64");
+    const commitMsg = message.content || `Upload ${mainFileName}`;
 
-    // ---- Replace main file (poster.png) ----
-    let sha;
-    try {
-      const { data } = await octokit.rest.repos.getContent({
-        owner,
-        repo,
-        path: `uploads/${mainFileName}`,
-      });
-      sha = data.sha;
-    } catch (err) {
-      if (err.status === 404) {
-        sha = undefined; // file doesn't exist yet
-      } else {
-        throw err;
-      }
-    }
-
-    await octokit.rest.repos.createOrUpdateFileContents({
-      owner,
-      repo,
-      path: `uploads/${mainFileName}`,
-      message: message.content || `Upload ${mainFileName}`,
-      content: base64Content,
-      sha,
-    });
-
+    // ---- Replace main poster.png ----
+    await safeUpdateFile(`uploads/${mainFileName}`, base64Content, commitMsg);
     console.log(`✅ Replaced ${mainFileName}`);
 
-    // ---- Timestamped copy ----
+    // ---- Upload timestamped copy ----
     const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
     const timestampedName = `uploads/${mainFileName.replace(
       /\.png$/,
       `-${timestamp}.png`
     )}`;
-
-    await octokit.rest.repos.createOrUpdateFileContents({
-      owner,
-      repo,
-      path: timestampedName,
-      message: message.content || `Upload ${timestampedName}`,
-      content: base64Content,
-    });
-
+    await safeUpdateFile(timestampedName, base64Content, commitMsg);
     console.log(`✅ Uploaded timestamped file: ${timestampedName}`);
   } catch (err) {
     console.error("❌ Upload failed:", err);
