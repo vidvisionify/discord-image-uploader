@@ -37,18 +37,28 @@ async function getLatestSha(path) {
   return file?.sha; // undefined if file doesn't exist yet
 }
 
-// Helper to safely update a file
-async function safeUpdateFile(path, content, commitMsg) {
-  const sha = await getLatestSha(path);
-  await octokit.rest.repos.createOrUpdateFileContents({
-    owner,
-    repo,
-    path,
-    message: commitMsg,
-    content,
-    sha,
-    branch,
-  });
+// Helper to safely update a file with retry if SHA is stale
+async function safeUpdateFile(path, content, commitMsg, retries = 1) {
+  try {
+    const sha = await getLatestSha(path);
+    await octokit.rest.repos.createOrUpdateFileContents({
+      owner,
+      repo,
+      path,
+      message: commitMsg,
+      content,
+      sha,
+      branch,
+    });
+    return true; // success
+  } catch (err) {
+    if (retries > 0) {
+      console.warn(`⚠️ SHA stale or other error, retrying...`, err.message);
+      return safeUpdateFile(path, content, commitMsg, retries - 1);
+    }
+    console.error("❌ Upload failed:", err);
+    return false; // failed
+  }
 }
 
 client.once("ready", () => {
@@ -80,8 +90,12 @@ client.on("messageCreate", async (message) => {
     const commitMsg = message.content || `Upload ${mainFileName}`;
 
     // ---- Replace poster.png ----
-    await safeUpdateFile(`uploads/${mainFileName}`, base64Content, commitMsg);
-    console.log(`✅ Replaced ${mainFileName}`);
+    const mainReplaced = await safeUpdateFile(`uploads/${mainFileName}`, base64Content, commitMsg);
+    if (mainReplaced) {
+      console.log(`✅ Replaced ${mainFileName}`);
+      // React only if successfully replaced
+      await message.react("🔗");
+    }
 
     // ---- Upload timestamped copy ----
     const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
@@ -89,13 +103,13 @@ client.on("messageCreate", async (message) => {
       /\.png$/,
       `-${timestamp}.png`
     )}`;
-    await safeUpdateFile(timestampedName, base64Content, commitMsg);
-    console.log(`✅ Uploaded timestamped file: ${timestampedName}`);
+    const timestampedSuccess = await safeUpdateFile(timestampedName, base64Content, commitMsg);
+    if (timestampedSuccess) {
+      console.log(`✅ Uploaded timestamped file: ${timestampedName}`);
+    }
 
-    // ---- React to original message ----
-    await message.react("🔗");
   } catch (err) {
-    console.error("❌ Upload failed:", err);
+    console.error("❌ Processing/upload failed:", err);
   }
 });
 
