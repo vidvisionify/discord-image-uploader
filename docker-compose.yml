@@ -1,14 +1,18 @@
 version: "3.9"
 services:
-  discord-image-uploader:
-    build: .
-    container_name: discord-image-uploader
-    restart: always
+  posterbot:
+    image: ghcr.io/vidvisionify/discord-image-uploader:latest
+    container_name: posterbot
+    restart: unless-stopped
     environment:
-      - DISCORD_TOKEN=${DISCORD_TOKEN}
-      - DISCORD_CHANNEL_ID=${DISCORD_CHANNEL_ID}
-      - GITHUB_TOKEN=${GITHUB_TOKEN}
-      - GITHUB_REPO=${GITHUB_REPO}
-      - GITHUB_BRANCH=${GITHUB_BRANCH}
-      - IMAGE_FILENAME_BASE=${IMAGE_FILENAME_BASE}
-      - GITHUB_PATH=${GITHUB_PATH}
+      - DISCORD_TOKEN=
+      - DISCORD_CHANNEL_ID=
+      - GITHUB_TOKEN=
+      - GITHUB_REPO=
+      - GITHUB_BRANCH=
+      - MAIN_FILENAME=
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "200k"
+        max-file: "10"
