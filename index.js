@@ -1,90 +1,78 @@
 import { Client, GatewayIntentBits } from "discord.js";
 import { Octokit } from "@octokit/rest";
-import sharp from "sharp";
 import fs from "fs";
-import path from "path";
-import fetch from "node-fetch";
+import sharp from "sharp";
 import dotenv from "dotenv";
+
 dotenv.config();
 
-const client = new Client({
-  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent],
-});
-
+const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent] });
 const octokit = new Octokit({ auth: process.env.GITHUB_TOKEN });
 
-const {
-  DISCORD_CHANNEL_ID,
-  GITHUB_REPO,
-  GITHUB_BRANCH = "main",
-  GITHUB_PATH = "uploads/",
-  IMAGE_FILENAME_BASE = "poster",
-} = process.env;
+const owner = process.env.GITHUB_REPO.split("/")[0];
+const repo = process.env.GITHUB_REPO.split("/")[1];
+const channelId = process.env.DISCORD_CHANNEL_ID;
+const mainFileName = process.env.MAIN_FILENAME || "poster.png";
 
 client.once("ready", () => {
   console.log(`✅ Logged in as ${client.user.tag}`);
 });
 
 client.on("messageCreate", async (message) => {
-  if (message.channel.id !== DISCORD_CHANNEL_ID) return;
+  if (message.channel.id !== channelId) return;
+  if (message.author.bot) return;
+
   const attachment = message.attachments.first();
   if (!attachment || !attachment.contentType?.startsWith("image/")) return;
 
-  console.log(`🖼️ Found image in #${message.channel.name}: ${attachment.url}`);
+  console.log(`🖼️ Found image: ${attachment.url}`);
+
   try {
+    // Download the image
     const res = await fetch(attachment.url);
     const buffer = Buffer.from(await res.arrayBuffer());
 
-    // Resize image
-    const resizedBuffer = await sharp(buffer)
-      .resize(1024, 1024, { fit: "contain", background: "#00000000" })
+    // Resize to 1024x1024 square PNG
+    const resized = await sharp(buffer)
+      .resize(1024, 1024, { fit: "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } })
       .png()
       .toBuffer();
 
-    const timestamp = new Date().toISOString().replace(/[:.-]/g, "_");
-    const baseFile = `${IMAGE_FILENAME_BASE}.png`;
-    const timestampedFile = `${IMAGE_FILENAME_BASE}_${timestamp}.png`;
+    const base64Content = resized.toString("base64");
 
-    const files = [
-      { name: baseFile, buffer: resizedBuffer },
-      { name: timestampedFile, buffer: resizedBuffer },
-    ];
-
-    for (const { name, buffer } of files) {
-      const { data: repoData } = await octokit.repos.getContent({
-        owner: GITHUB_REPO.split("/")[0],
-        repo: GITHUB_REPO.split("/")[1],
-        path: `${GITHUB_PATH}${name}`,
-        ref: GITHUB_BRANCH,
-      }).catch(() => ({ data: null }));
-
-      const sha = repoData?.sha;
-
-      await octokit.repos.createOrUpdateFileContents({
-        owner: GITHUB_REPO.split("/")[0],
-        repo: GITHUB_REPO.split("/")[1],
-        path: `${GITHUB_PATH}${name}`,
-        message: message.content || "New image upload",
-        content: buffer.toString("base64"),
-        branch: GITHUB_BRANCH,
-        sha,
-      });
-
-      console.log(`✅ Uploaded ${name} to GitHub`);
+    // Upload/replace main file
+    let sha;
+    try {
+      const { data } = await octokit.rest.repos.getContent({ owner, repo, path: `uploads/${mainFileName}` });
+      sha = data.sha;
+    } catch (err) {
+      if (err.status !== 404) throw err; // ignore if file doesn't exist
     }
 
-    // Update gallery.html
-    const imageUrl = `https://raw.githubusercontent.com/${GITHUB_REPO}/${GITHUB_BRANCH}/${GITHUB_PATH}${timestampedFile}`;
-    const altText = message.content || "Uploaded image";
-    const galleryPath = path.resolve("gallery.html");
+    await octokit.rest.repos.createOrUpdateFileContents({
+      owner,
+      repo,
+      path: `uploads/${mainFileName}`,
+      message: message.content || `Upload ${mainFileName}`,
+      content: base64Content,
+      sha,
+    });
 
-    let gallery = fs.existsSync(galleryPath) ? fs.readFileSync(galleryPath, "utf8") : "";
-    const newEntry = `<figure><img src="${imageUrl}" alt="${altText}"><figcaption>${altText}</figcaption></figure>`;
-    gallery = gallery.replace("</body>", `${newEntry}\n</body>`);
-    fs.writeFileSync(galleryPath, gallery);
+    console.log(`✅ Replaced ${mainFileName}`);
 
-    console.log(`🖼️ Added to gallery.html: ${timestampedFile}`);
+    // Upload timestamped version
+    const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+    const timestampedName = `uploads/${mainFileName.replace(/(\.png)$/, `-${timestamp}$1`)}`;
 
+    await octokit.rest.repos.createOrUpdateFileContents({
+      owner,
+      repo,
+      path: timestampedName,
+      message: message.content || `Upload ${timestampedName}`,
+      content: base64Content,
+    });
+
+    console.log(`✅ Uploaded timestamped file: ${timestampedName}`);
   } catch (err) {
     console.error("❌ Upload failed:", err);
   }
