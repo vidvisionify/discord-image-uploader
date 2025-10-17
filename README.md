@@ -9,6 +9,10 @@ Images are:
 - Added to a simple **gallery.html** for easy viewing    
 - Each commit message becomes the **alt text** for that image
 
+### Attention: This script is made by AI.
+I wasn't able to find a project to do exactly what I wanted, so I used ChatGPT instead of struggling for weeks.
+While I would never use genAI to create images or video, I don't see (as much) harm in simple code like this. IDK, I might backpedal on this at some point, I'm a simple creature that can only handle so many ethics questions.
+
 ---
 ## 🚀 Features
 - Monitors a single Discord channel for new images    
