@@ -19,33 +19,33 @@ const octokit = new Octokit({ auth: process.env.GITHUB_TOKEN });
 const [owner, repo] = process.env.GITHUB_REPO.split("/");
 const channelId = process.env.DISCORD_CHANNEL_ID;
 const mainFileName = process.env.MAIN_FILENAME || "poster.png";
+const branch = process.env.GITHUB_BRANCH || "main";
 
-// Helper to safely update a file (handles SHA and 404)
+// Helper to safely update a file
 async function safeUpdateFile(path, content, commitMsg) {
+  let sha;
   try {
-    const { data } = await octokit.rest.repos.getContent({ owner, repo, path });
-    const sha = data.sha;
-    await octokit.rest.repos.createOrUpdateFileContents({
+    const { data } = await octokit.rest.repos.getContent({
       owner,
       repo,
       path,
-      message: commitMsg,
-      content,
-      sha,
+      ref: branch,
     });
+    sha = data.sha;
   } catch (err) {
-    if (err.status === 404) {
-      await octokit.rest.repos.createOrUpdateFileContents({
-        owner,
-        repo,
-        path,
-        message: commitMsg,
-        content,
-      });
-    } else {
-      console.error("Upload error:", err);
-    }
+    if (err.status !== 404) throw err;
+    sha = undefined; // file doesn’t exist yet
   }
+
+  await octokit.rest.repos.createOrUpdateFileContents({
+    owner,
+    repo,
+    path,
+    message: commitMsg,
+    content,
+    sha,
+    branch,
+  });
 }
 
 client.once("ready", () => {
@@ -88,6 +88,9 @@ client.on("messageCreate", async (message) => {
     )}`;
     await safeUpdateFile(timestampedName, base64Content, commitMsg);
     console.log(`✅ Uploaded timestamped file: ${timestampedName}`);
+
+    // ---- React to the original message ----
+    await message.react("🔗");
   } catch (err) {
     console.error("❌ Upload failed:", err);
   }
