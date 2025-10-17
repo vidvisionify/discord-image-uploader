@@ -9,12 +9,11 @@ dotenv.config();
 const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent] });
 const octokit = new Octokit({ auth: process.env.GITHUB_TOKEN });
 
-const owner = process.env.GITHUB_REPO.split("/")[0];
-const repo = process.env.GITHUB_REPO.split("/")[1];
+const [owner, repo] = process.env.GITHUB_REPO.split("/");
 const channelId = process.env.DISCORD_CHANNEL_ID;
 const mainFileName = process.env.MAIN_FILENAME || "poster.png";
 
-client.once("ready", () => {
+client.once("clientReady", () => {
   console.log(`✅ Logged in as ${client.user.tag}`);
 });
 
@@ -28,11 +27,9 @@ client.on("messageCreate", async (message) => {
   console.log(`🖼️ Found image: ${attachment.url}`);
 
   try {
-    // Download the image
     const res = await fetch(attachment.url);
     const buffer = Buffer.from(await res.arrayBuffer());
 
-    // Resize to 1024x1024 square PNG
     const resized = await sharp(buffer)
       .resize(1024, 1024, { fit: "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } })
       .png()
@@ -40,13 +37,13 @@ client.on("messageCreate", async (message) => {
 
     const base64Content = resized.toString("base64");
 
-    // Upload/replace main file
+    // Replace main file
     let sha;
     try {
       const { data } = await octokit.rest.repos.getContent({ owner, repo, path: `uploads/${mainFileName}` });
       sha = data.sha;
     } catch (err) {
-      if (err.status !== 404) throw err; // ignore if file doesn't exist
+      if (err.status !== 404) throw err;
     }
 
     await octokit.rest.repos.createOrUpdateFileContents({
@@ -60,7 +57,7 @@ client.on("messageCreate", async (message) => {
 
     console.log(`✅ Replaced ${mainFileName}`);
 
-    // Upload timestamped version
+    // Timestamped copy
     const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
     const timestampedName = `uploads/${mainFileName.replace(/(\.png)$/, `-${timestamp}$1`)}`;
 
