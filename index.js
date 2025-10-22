@@ -21,23 +21,26 @@ const channelId = process.env.DISCORD_CHANNEL_ID;
 const mainFileName = process.env.MAIN_FILENAME || "poster.png";
 const branch = process.env.GITHUB_BRANCH || "main";
 
-// Fetch the SHA of the file from the latest branch tree
 async function getLatestSha(path) {
-  const branchInfo = await octokit.rest.repos.getBranch({ owner, repo, branch });
-  const commitSha = branchInfo.data.commit.sha;
+  try {
+    const branchInfo = await octokit.rest.repos.getBranch({ owner, repo, branch });
+    const commitSha = branchInfo.data.commit.sha;
 
-  const tree = await octokit.rest.git.getTree({
-    owner,
-    repo,
-    tree_sha: commitSha,
-    recursive: true,
-  });
+    const tree = await octokit.rest.git.getTree({
+      owner,
+      repo,
+      tree_sha: commitSha,
+      recursive: true,
+    });
 
-  const file = tree.data.tree.find(f => f.path === path);
-  return file?.sha; // undefined if file doesn't exist yet
+    const file = tree.data.tree.find(f => f.path === path);
+    return file?.sha;
+  } catch (err) {
+    console.warn(`⚠️ Could not get SHA for ${path}:`, err.message);
+    return undefined;
+  }
 }
 
-// Helper to safely update a file with retry if SHA is stale
 async function safeUpdateFile(path, content, commitMsg, retries = 1) {
   try {
     const sha = await getLatestSha(path);
@@ -50,14 +53,56 @@ async function safeUpdateFile(path, content, commitMsg, retries = 1) {
       sha,
       branch,
     });
-    return true; // success
+    return true;
   } catch (err) {
     if (retries > 0) {
-      console.warn(`⚠️ SHA stale or other error, retrying...`, err.message);
+      console.warn(`⚠️ Retry updating ${path} due to error: ${err.message}`);
       return safeUpdateFile(path, content, commitMsg, retries - 1);
     }
-    console.error("❌ Upload failed:", err);
-    return false; // failed
+    console.error(`❌ Failed to update ${path}:`, err.message);
+    return false;
+  }
+}
+
+async function rotatePosters() {
+  const maxVersions = 3;
+  for (let i = maxVersions; i >= 0; i--) {
+    const src = i === 0 ? mainFileName : mainFileName.replace(".png", `-${i}.png`);
+    const dest = mainFileName.replace(".png", `-${i + 1}.png`);
+    if (i === maxVersions) {
+      // Delete the oldest version if it exists
+      try {
+        const sha = await getLatestSha(`uploads/${dest}`);
+        if (sha) {
+          await octokit.rest.repos.deleteFile({
+            owner,
+            repo,
+            path: `uploads/${dest}`,
+            message: `Remove old version ${dest}`,
+            sha,
+            branch,
+          });
+          console.log(`🗑️ Removed oldest ${dest}`);
+        }
+      } catch {}
+      continue;
+    }
+
+    const sha = await getLatestSha(`uploads/${src}`);
+    if (!sha) continue;
+
+    const file = await octokit.rest.repos.getContent({
+      owner,
+      repo,
+      path: `uploads/${src}`,
+      ref: branch,
+    });
+
+    if (!("content" in file.data)) continue;
+    const content = file.data.content;
+
+    await safeUpdateFile(`uploads/${dest}`, content, `Rotate ${src} → ${dest}`);
+    console.log(`🔁 Rotated ${src} → ${dest}`);
   }
 }
 
@@ -89,27 +134,30 @@ client.on("messageCreate", async (message) => {
     const base64Content = resized.toString("base64");
     const commitMsg = message.content || `Upload ${mainFileName}`;
 
-    // ---- Replace poster.png ----
-    const mainReplaced = await safeUpdateFile(`uploads/${mainFileName}`, base64Content, commitMsg);
+    // Rotate previous poster versions
+    await rotatePosters();
+
+    // Replace main poster.png
+    const mainReplaced = await safeUpdateFile(
+      `uploads/${mainFileName}`,
+      base64Content,
+      commitMsg
+    );
+
     if (mainReplaced) {
       console.log(`✅ Replaced ${mainFileName}`);
-      // React only if successfully replaced
       await message.react("🔗");
     }
 
-    // ---- Upload timestamped copy ----
+    // Timestamped version for archive
     const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
     const timestampedName = `uploads/${mainFileName.replace(
       /\.png$/,
       `-${timestamp}.png`
     )}`;
-    const timestampedSuccess = await safeUpdateFile(timestampedName, base64Content, commitMsg);
-    if (timestampedSuccess) {
-      console.log(`✅ Uploaded timestamped file: ${timestampedName}`);
-    }
-
+    await safeUpdateFile(timestampedName, base64Content, commitMsg);
   } catch (err) {
-    console.error("❌ Processing/upload failed:", err);
+    console.error("❌ Upload failed:", err);
   }
 });
 
