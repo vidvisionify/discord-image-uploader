@@ -208,12 +208,32 @@ client.once("ready", () => {
 /* ---------------------------------------------------------
    📥 Image Upload Handler
 --------------------------------------------------------- */
+function getImageAttachment(message) {
+  // Check direct attachments
+  const directAttachment = message.attachments.find(att => att.contentType?.startsWith("image/"));
+  if (directAttachment) return { attachment: directAttachment, content: message.content };
+
+  // Check forwarded messages
+  if (message.messageSnapshots) {
+    for (const snapshot of message.messageSnapshots) {
+      const forwardedAttachment = snapshot.attachments?.find(att => att.contentType?.startsWith("image/"));
+      if (forwardedAttachment) {
+        return { attachment: forwardedAttachment, content: snapshot.content || message.content };
+      }
+    }
+  }
+
+  return null;
+}
+
 client.on("messageCreate", async (message) => {
   if (message.channel.id !== channelId) return;
   if (message.author.bot) return;
 
-  const attachment = message.attachments.first();
-  if (!attachment || !attachment.contentType?.startsWith("image/")) return;
+  const imageData = getImageAttachment(message);
+  if (!imageData) return;
+
+  const { attachment, content } = imageData;
 
   console.log(`🖼️ Found image: ${attachment.url}`);
 
@@ -230,9 +250,9 @@ client.on("messageCreate", async (message) => {
       .toBuffer();
 
     const base64Content = resized.toString("base64");
-    const commitMsg = message.content || `Upload ${mainFileName}`;
+    const commitMsg = content || `Upload ${mainFileName}`;
 
-    const killDate = parseKillDate(message.content);
+    const killDate = parseKillDate(content);
     const killData = await loadKillData();
 
     // Rotate old versions
