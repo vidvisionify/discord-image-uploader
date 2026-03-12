@@ -1,5 +1,5 @@
 {
-  "name": "discord-posterbot",
+  "name": "discord-image-uploader",
   "version": "1.0.0",
   "description": "Discord image uploader that pushes posters to GitHub with expiration dates",
   "main": "index.js",
