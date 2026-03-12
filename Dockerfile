@@ -1,10 +1,10 @@
-# Use Node 20 for ES module & modern JS support 
+# Use Node 20 for ES module & modern JS support
 FROM node:20-bullseye
 
 # Set working directory
 WORKDIR /app
 
-# Install system dependencies for sharp
+# Install system dependencies required by sharp
 RUN apt-get update && apt-get install -y \
     build-essential \
     libcairo2-dev \
@@ -14,16 +14,19 @@ RUN apt-get update && apt-get install -y \
     librsvg2-dev \
  && rm -rf /var/lib/apt/lists/*
 
-# Copy package.json first to leverage Docker cache
+# Copy package.json and package-lock.json first (better caching)
 COPY package*.json ./
 
-# Install dependencies
+# Install node dependencies
 RUN npm install
 
-# Copy the rest of your project files
+# Copy application files
 COPY . .
 
-# Health check: make sure node process is running
+# Set production environment
+ENV NODE_ENV=production
+
+# Health check to ensure bot process is running
 HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
   CMD pgrep -f "node index.js" || exit 1
 
