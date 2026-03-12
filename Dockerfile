@@ -1,10 +1,10 @@
-# Use Node 20 for ES module & modern JS support
+# Use Node 20 with Debian for sharp compatibility
 FROM node:20-bullseye
 
 # Set working directory
 WORKDIR /app
 
-# Install system dependencies required by sharp
+# Install system dependencies required for sharp
 RUN apt-get update && apt-get install -y \
     build-essential \
     libcairo2-dev \
@@ -14,20 +14,20 @@ RUN apt-get update && apt-get install -y \
     librsvg2-dev \
  && rm -rf /var/lib/apt/lists/*
 
-# Copy package.json and package-lock.json first (better caching)
-COPY package*.json ./
+# Copy dependency manifests first (better build caching)
+COPY package.json package-lock.json ./
 
-# Install node dependencies
-RUN npm install
+# Install only production dependencies
+RUN npm ci --omit=dev
 
-# Copy application files
+# Copy application source
 COPY . .
 
-# Set production environment
+# Set environment
 ENV NODE_ENV=production
 
-# Health check to ensure bot process is running
-HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
+# Health check to ensure bot is running
+HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
   CMD pgrep -f "node index.js" || exit 1
 
 # Start the bot
